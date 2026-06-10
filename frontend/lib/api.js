@@ -69,6 +69,7 @@ export async function importSource(kind, file) {
   fd.append("file", file);
   const r = await fetch(API + url, { method: "POST", headers: { ...authHeaders() }, body: fd });
   if (!r.ok) {
+    if (r.status === 401) throw new Error("Session expired — please log out and log in again.");
     const detail = await r.json().catch(() => null);
     throw new Error((detail && detail.detail) || `Import failed (${r.status})`);
   }

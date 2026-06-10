@@ -20,21 +20,28 @@ logger = logging.getLogger("star")
 logging.basicConfig(level=logging.INFO)
 
 
+def _ensure_user(session: Session, username: str, email: str, full_name: str,
+                  role: str, password: str) -> None:
+    from sqlmodel import select as _sel
+    if not session.exec(_sel(User).where(User.username == username)).first():
+        session.add(User(username=username, email=email, full_name=full_name,
+                         role=role, hashed_password=hash_password(password)))
+        logger.info("Seeded user '%s' (role=%s).", username, role)
+
+
 def _seed_admin() -> None:
     with Session(engine) as session:
-        if session.exec(select(User)).first():
-            return
-        admin = User(
-            username=settings.FIRST_ADMIN_USERNAME,
-            email=settings.FIRST_ADMIN_EMAIL,
-            full_name="Bootstrap Admin",
-            role="admin",
-            hashed_password=hash_password(settings.FIRST_ADMIN_PASSWORD),
-        )
-        session.add(admin)
+        _ensure_user(session,
+                     settings.FIRST_ADMIN_USERNAME,
+                     settings.FIRST_ADMIN_EMAIL,
+                     "Bootstrap Admin", "admin",
+                     settings.FIRST_ADMIN_PASSWORD)
+        # Seed the demo architect so the frontend default creds work with real auth.
+        _ensure_user(session,
+                     "architect", "architect@example.com",
+                     "Demo Architect", "architect",
+                     "star2026")
         session.commit()
-        logger.info("Seeded bootstrap admin user '%s' — change the password immediately.",
-                    settings.FIRST_ADMIN_USERNAME)
 
 
 @asynccontextmanager

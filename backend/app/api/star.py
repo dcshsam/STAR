@@ -9,12 +9,12 @@ from app.db.models import Portfolio, User, get_session
 from app.engine.atc import parse_atc
 from app.engine.ewa import parse_ewa
 from app.engine.narrative import llm_narrative
-from app.engine.readiness import parse_zip
+from app.engine.readiness import parse as parse_readiness
 from app.engine.simplification import parse_simplification
 from app.engine.scoring import recommend
 from app.schemas.star import IntakeForm, PortfolioRead, PortfolioWrite, Recommendation
 
-router = APIRouter(tags=["star"])
+router = APIRouter(prefix="/star", tags=["star"])
 
 
 @router.get("/portfolio", response_model=PortfolioRead)
@@ -71,11 +71,12 @@ def import_readiness(
     file: UploadFile = File(...),
     _user: User = Depends(get_current_user),
 ):
-    """Parse an uploaded SAP Readiness Check export (.zip) into a pre-filled
-    intake + extraction summary. The architect reviews before scoring."""
+    """Parse an uploaded SAP Readiness Check export (.zip of XLSX exports OR the
+    narrative .docx report) into a pre-filled intake + extraction summary. The
+    architect reviews before scoring."""
     try:
         data = file.file.read()
-        return parse_zip(data)
+        return parse_readiness(data, file.filename or "")
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                             detail=f"Could not parse readiness export: {e}")

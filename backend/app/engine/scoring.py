@@ -85,7 +85,7 @@ WAVES = {
     "BROWNFIELD": ["Readiness Check & Prep", "Custom-code Remediation", "Conversion (SUM/DMO)", "Test", "Cutover", "Hypercare"],
     "BLUEFIELD": ["Scope & Selection", "Build redesigned areas", "Selective Data Transition", "Integrate & Test", "Cutover", "Hypercare"],
 }
-S4_VERSIONS = ["1909", "2020", "2021", "2022", "2023", "2025"]
+S4_VERSIONS = ["1503", "1511", "1610", "1709", "1809", "1909", "2020", "2021", "2022", "2023", "2025"]
 LATEST_S4 = "2025"
 S4_RANK = {v: i for i, v in enumerate(S4_VERSIONS)}
 UPGRADE_WAVES = ["Upgrade planning & Readiness", "Custom-code & add-on check", "Release Upgrade (SUM)", "Test", "Cutover", "Hypercare"]
@@ -208,7 +208,8 @@ def recommend(x: dict) -> dict:
 
     if rel == "s4hana":
         cur = x.get("s4_version") or "unknown"
-        behind = cur in S4_RANK and S4_RANK[cur] < S4_RANK[LATEST_S4]
+        # Unknown versions (e.g. older than list) are treated as behind, not current.
+        behind = cur not in S4_RANK or S4_RANK[cur] < S4_RANK[LATEST_S4]
         ds, dt = _score_set(DEPLOY_FACTORS, x, D)
         for t, v in COUPLING["UPGRADE"].items():
             ds[t] += v

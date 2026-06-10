@@ -102,7 +102,7 @@ const WAVES = {
   BROWNFIELD: ["Readiness Check & Prep", "Custom-code Remediation", "Conversion (SUM/DMO)", "Test", "Cutover", "Hypercare"],
   BLUEFIELD: ["Scope & Selection", "Build redesigned areas", "Selective Data Transition", "Integrate & Test", "Cutover", "Hypercare"],
 };
-const S4_VERSIONS = ["1909", "2020", "2021", "2022", "2023", "2025"];
+const S4_VERSIONS = ["1503", "1511", "1610", "1709", "1809", "1909", "2020", "2021", "2022", "2023", "2025"];
 const LATEST_S4 = "2025";
 const S4_RANK = Object.fromEntries(S4_VERSIONS.map((v, i) => [v, i]));
 const UPGRADE_WAVES = ["Upgrade planning & Readiness", "Custom-code & add-on check", "Release Upgrade (SUM)", "Test", "Cutover", "Hypercare"];
@@ -153,7 +153,7 @@ function recommend(x) {
 
   if (rel === "s4hana") {
     const cur = x.s4_version || "unknown";
-    const behind = S4_RANK[cur] !== undefined && S4_RANK[cur] < S4_RANK[LATEST_S4];
+    const behind = S4_RANK[cur] === undefined || S4_RANK[cur] < S4_RANK[LATEST_S4];
     let [ds, dt] = scoreSet(DEPLOY_FACTORS, x, D);
     for (const [t, v] of Object.entries(COUPLING.UPGRADE)) { ds[t] += v; dt.push({ factor: "Approach coupling", answer: "UPGRADE", contribution: { [t]: v } }); }
     const deployment = D.reduce((m, t) => (ds[t] > ds[m] ? t : m), D[0]);
@@ -214,28 +214,30 @@ const DEPLOY_META = {
   ON_PREM: { label: "On-premise", color: C.grey },
 };
 const SWING = new Set(["process_reengineering_appetite", "custom_objects_band", "landscape_intent", "primary_driver", "target_golive", "basis_ops_capability", "interface_complexity"]);
-const PRESET_MODULES = ["FI", "CO", "MM", "SD", "PP", "QM", "PM / EAM", "WM", "EWM", "TM", "PS", "HCM", "FSCM", "VC / AVC", "JIT / JIS", "VMS", "Ariba", "SuccessFactors"];
+const PRESET_MODULES = ["FI", "CO", "MM", "SD", "PP", "QM", "PM / EAM", "WM", "EWM", "TM", "PS", "HCM", "FSCM", "SRM", "GRC", "RE", "VC / AVC", "JIT / JIS", "VMS", "Ariba", "SuccessFactors"];
 const INTERFACE_COUNT_LABEL = { lt_20: "<20", "20_50": "20–50", "50_100": "50–100", "100_200": "100–200", gt_200: ">200" };
 const ICOMPLEX_LABEL = { simple: "Simple", medium: "Medium", complex: "Complex", very_complex: "Very complex" };
 const NONSAP_LABEL = { low: "<25% non-SAP", medium: "25–60% non-SAP", high: ">60% non-SAP" };
 const MIDDLEWARE_LABEL = { sap_pi_po: "SAP PI/PO", sap_integration_suite: "SAP Integration Suite", third_party: "Third-party MW", point_to_point: "Point-to-point", mixed: "Mixed MW" };
 const intgLabel = (g) => (g ? [(INTERFACE_COUNT_LABEL[g.count_band] || "?") + " interfaces", ICOMPLEX_LABEL[g.complexity_input], NONSAP_LABEL[g.non_sap_share], MIDDLEWARE_LABEL[g.middleware]].filter(Boolean).join(" · ") : "");
 
-const TECH_KEYS = ["product_release", "unicode_status", "stack_type", "db_size_band", "custom_objects_band", "overall_customization", "pct_active_estimate", "modifications_to_standard", "interface_count_band", "interface_complexity", "non_sap_share", "middleware", "modules_implemented"];
+const TECH_KEYS = ["product_release", "unicode_status", "stack_type", "db_size_band", "custom_objects_band", "overall_customization", "pct_active_estimate", "modifications_to_standard", "interface_count_band", "interface_complexity", "non_sap_share", "middleware", "modules_implemented", "fiori_apps_in_scope", "fiori_activation_level"];
 
 // Static source metadata only \u2014 form/facts/advisory/insights come from the backend parser.
 const SOURCES = {
   readiness: {
     label: "SAP Readiness Check", code: "RC", accept: "*",
-    confident: ["system_id", "product_release", "unicode_status", "db_size_band", "interface_count_band", "interface_complexity", "custom_objects_band", "overall_customization", "pct_active_estimate", "modifications_to_standard"],
+    confident: ["system_id", "product_release", "s4_version", "unicode_status", "db_size_band", "interface_count_band", "interface_complexity", "middleware", "custom_objects_band", "overall_customization", "pct_active_estimate", "modifications_to_standard", "fiori_apps_in_scope", "fiori_activation_level"],
   },
   atc: {
     label: "ATC / Custom Code", code: "ATC", accept: "*",
-    confident: ["custom_objects_band", "overall_customization", "pct_active_estimate", "modifications_to_standard"],
+    // Full RC ZIPs are auto-detected on the backend and parsed via the RC parser,
+    // so the ATC tile can also confidently populate system/interface/Fiori fields.
+    confident: ["custom_objects_band", "overall_customization", "pct_active_estimate", "modifications_to_standard", "modules_implemented", "process_reengineering_appetite", "system_id", "product_release", "s4_version", "unicode_status", "interface_count_band", "interface_complexity", "middleware", "fiori_apps_in_scope", "fiori_activation_level"],
   },
   simplification: {
     label: "Simplification Item Check", code: "SI", accept: "*",
-    confident: [],
+    confident: ["modules_implemented", "process_reengineering_appetite"],
   },
   ewa: {
     label: "EarlyWatch Alert", code: "EWA", accept: "*",
@@ -243,9 +245,19 @@ const SOURCES = {
   },
 };
 const FUSE_ORDER = ["simplification", "ewa", "readiness", "atc"];
-// Fuse real backend-parsed data (keyed by source kind) into a merged form + provenance.
+
+// Form field → exact-number key returned by the backend `extracted` dict, plus display metadata.
+const EXTRACT_MAP = {
+  interface_count_band:    { key: "interface_count",    unit: "interfaces",          icon: "🔌" },
+  custom_objects_band:     { key: "custom_objects",     unit: "custom objects",      icon: "🧩" },
+  fiori_apps_in_scope:     { key: "fiori_apps",         unit: "Fiori apps",          icon: "📱" },
+  fiori_activation_level:  { key: "fiori_activation_pct", unit: "% currently on Fiori", icon: "⚡" },
+  db_size_band:            { key: "db_size_gb",         unit: "GB on disk",          icon: "💾" },
+};
+
+// Fuse real backend-parsed data (keyed by source kind) into a merged form + provenance + extracted exact numbers.
 function fuseSources(kinds, dataByKind) {
-  const form = {}; const prov = {};
+  const form = {}; const prov = {}; const exact = {};
   FUSE_ORDER.forEach((k) => {
     if (!kinds.includes(k)) return;
     const src = SOURCES[k];
@@ -254,8 +266,9 @@ function fuseSources(kinds, dataByKind) {
       form[key] = val;
       prov[key] = { code: src.code, label: src.label, assumed: !src.confident.includes(key) };
     });
+    Object.entries(parsed.extracted || {}).forEach(([key, val]) => { exact[key] = val; });
   });
-  return { form, prov };
+  return { form, prov, exact };
 }
 const ICONS = {
   account: "M16 8a4 4 0 11-8 0 4 4 0 018 0zM4 21v-1a6 6 0 0112 0v1",
@@ -272,7 +285,7 @@ const SECTIONS = [
   { title: "System Identity", icon: "system", desc: "Technical baseline of the system.", fields: [
     { k: "system_id", label: "System ID", type: "text", ph: "e.g. PRD-ECC-DE01" },
     { k: "product_release", label: "Product & Release", type: "select", opts: O([["ecc6_ehp", "ECC 6.0 + EHP (AnyDB)"], ["ecc6", "ECC 6.0 (no EHP, AnyDB)"], ["soh", "ECC on Suite on HANA (HANA DB)"], ["s4hana", "Already S/4HANA"], ["pre_ecc6", "Pre-ECC 6.0 / R3"]]) },
-    { k: "s4_version", label: "S/4HANA version", type: "select", showIf: (f) => f.product_release === "s4hana", opts: O([["1909", "S/4HANA 1909"], ["2020", "S/4HANA 2020"], ["2021", "S/4HANA 2021"], ["2022", "S/4HANA 2022"], ["2023", "S/4HANA 2023"], ["2025", "S/4HANA 2025 (latest)"]]) },
+    { k: "s4_version", label: "S/4HANA version", type: "select", showIf: (f) => f.product_release === "s4hana", opts: O([["1503", "S/4HANA 1503"], ["1511", "S/4HANA 1511"], ["1610", "S/4HANA 1610"], ["1709", "S/4HANA 1709"], ["1809", "S/4HANA 1809"], ["1909", "S/4HANA 1909"], ["2020", "S/4HANA 2020"], ["2021", "S/4HANA 2021"], ["2022", "S/4HANA 2022"], ["2023", "S/4HANA 2023"], ["2025", "S/4HANA 2025 (latest)"]]) },
     { k: "unicode_status", label: "Unicode Status", type: "select", opts: O([["unicode", "Unicode"], ["non_unicode", "Non-Unicode"]]) },
     { k: "stack_type", label: "Stack type", type: "select", showIf: (f) => f.product_release !== "s4hana", opts: O([["single_stack", "Single-stack (ABAP)"], ["dual_stack", "Dual-stack (ABAP + Java)"]]) },
     { k: "db_size_band", label: "Database Size", type: "select", opts: O([["lt_500gb", "< 500 GB"], ["500gb_1tb", "500 GB – 1 TB"], ["1_3tb", "1–3 TB"], ["3_5tb", "3–5 TB"], ["5_10tb", "5–10 TB"], ["10_20tb", "10–20 TB"], ["20_40tb", "20–40 TB"], ["gt_40tb", "> 40 TB"]]) },
@@ -281,7 +294,7 @@ const SECTIONS = [
     { k: "modules_implemented", label: "SAP modules implemented", type: "modules" },
     { k: "process_reengineering_appetite", label: "Process re-engineering appetite", type: "select", opts: O([["redesign_to_standard", "Redesign to S/4 standard"], ["preserve", "Preserve current processes"], ["selective", "Selective"]]) },
   ]},
-  { title: "Technical & Integration", icon: "technical", desc: "Custom-code volume, complexity and the interface landscape.", fields: [
+  { title: "Technical & Integration", icon: "technical", desc: "Custom-code volume, complexity, interface landscape and Fiori readiness.", fields: [
     { k: "custom_objects_band", label: "Custom objects (Z/Y)", type: "select", opts: O([["lt_500", "< 500"], ["500_2k", "500–2k"], ["2k_10k", "2k–10k"], ["gt_10k", "> 10k"]]) },
     { k: "overall_customization", label: "Overall customization level", type: "select", opts: O([["Low", "Low"], ["Med", "Medium"], ["High", "High"]]) },
     { k: "pct_active_estimate", label: "Active custom code", type: "range" },
@@ -290,6 +303,9 @@ const SECTIONS = [
     { k: "interface_complexity", label: "Interface complexity (predominant)", type: "select", opts: O([["simple", "Simple (S) — standard IDoc/RFC"], ["medium", "Medium (M) — some mappings"], ["complex", "Complex (L) — multi-mapping / orchestration"], ["very_complex", "Very complex (XL) — B2B/EDI, heavy orchestration"]]) },
     { k: "non_sap_share", label: "SAP vs non-SAP mix", type: "select", opts: O([["low", "Mostly SAP (< 25% non-SAP)"], ["medium", "Mixed (25–60% non-SAP)"], ["high", "Mostly non-SAP (> 60%)"]]) },
     { k: "middleware", label: "Primary middleware", type: "select", opts: O([["sap_pi_po", "SAP PI / PO"], ["sap_integration_suite", "SAP Integration Suite (CPI)"], ["third_party", "Third-party (MuleSoft, Boomi, webMethods…)"], ["point_to_point", "Point-to-point / IDoc-RFC (none)"], ["mixed", "Mixed"]]) },
+    { k: "_fiori_header", label: "Fiori & UX Modernisation", type: "section" },
+    { k: "fiori_apps_in_scope", label: "Recommended Fiori apps (RC export)", type: "select", opts: O([["lt_500", "< 500 apps"], ["500_1000", "500–1,000 apps"], ["1000_2000", "1,000–2,000 apps"], ["gt_2000", "> 2,000 apps"]]) },
+    { k: "fiori_activation_level", label: "Current Fiori activation level", type: "select", opts: O([["not_started", "Not started (0%)"], ["initial", "Initial (< 25% activated)"], ["expanding", "Expanding (25–75%)"], ["established", "Established (> 75%)"]]) },
   ]},
   { title: "Data & Landscape", icon: "data", desc: "Data quality, history and landscape intent.", fields: [
     { k: "data_quality", label: "Data quality", type: "select", opts: O([["good", "Good"], ["mixed", "Mixed"], ["poor", "Poor"]]) },
@@ -317,6 +333,7 @@ const DEFAULTS = {
   modules_implemented: ["FI", "CO", "MM", "SD", "PP"],
   process_reengineering_appetite: "preserve", custom_objects_band: "500_2k", overall_customization: "Med", pct_active_estimate: 65, modifications_to_standard: "false",
   interface_count_band: "50_100", interface_complexity: "medium", non_sap_share: "medium", middleware: "sap_pi_po",
+  fiori_apps_in_scope: "lt_500", fiori_activation_level: "not_started",
   data_quality: "good", history_retention: "full", landscape_intent: "keep_single",
   primary_driver: "burning_platform_2027", target_golive: "lt_12mo", risk_disruption_tolerance: "minimize", budget_posture: "constrained", change_mgmt_maturity: "developing",
   basis_ops_capability: "strong_offload", existing_hyperscaler: "azure", data_sovereignty_strictness: "moderate", target_deployment_pref: "undecided",
@@ -510,10 +527,37 @@ input[type=range]{flex:1;accent-color:${C.blue};height:4px}
 .impbar-grid ul{margin:0;padding-left:16px}
 .impbar-grid li{font-size:12px;color:${C.ink};line-height:1.6}
 @media (max-width:640px){.choose-grid,.impbar-grid{grid-template-columns:1fr}}
-.fld.from-report .ctl,.fld.from-report .range-row{border-color:#9fd9b4;box-shadow:0 0 0 2px rgba(34,197,94,.08)}
-.fld.needs-confirm .ctl,.fld.needs-confirm .range-row{border-color:#f3c879;box-shadow:0 0 0 2px rgba(245,158,11,.08)}
+.sec-divider{display:flex;align-items:center;gap:10px;margin:14px 0 2px;color:${C.blue};font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}.sec-divider::before,.sec-divider::after{content:"";flex:1;height:1px;background:#e9e4f8}
+.fld.from-report .ctl,.fld.from-report .range-row,.fld.from-report .chips{border-color:#9fd9b4;box-shadow:0 0 0 2px rgba(34,197,94,.08);border-radius:8px;padding:6px}
+.fld.needs-confirm .ctl,.fld.needs-confirm .range-row,.fld.needs-confirm .chips{border-color:#f3c879;box-shadow:0 0 0 2px rgba(245,158,11,.08);border-radius:8px;padding:6px}
+.chip.imported{box-shadow:0 0 0 2px #9fd9b4;position:relative}
+.chip.imported::after{content:"✓";position:absolute;top:-5px;right:-5px;font-size:8px;background:#22c55e;color:#fff;border-radius:50%;width:13px;height:13px;display:flex;align-items:center;justify-content:center;font-weight:900}
 .src-badge{display:inline-block;margin-left:8px;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#15803d;background:#e7f7ed;border:1px solid #bbe7c9;border-radius:20px;padding:2px 8px;vertical-align:middle}
 .confirm-badge{display:inline-block;margin-left:8px;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#9a6700;background:#fff7e6;border:1px solid #f3d28a;border-radius:20px;padding:2px 8px;vertical-align:middle}
+.exact-wrap{display:flex;align-items:center;justify-content:space-between;gap:10px;background:linear-gradient(0deg,#f6f3ff,#fff);border:1px solid #d8ccff;border-radius:10px;padding:10px 12px;min-height:42px}
+.exact-val{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.exact-ic{font-size:16px;line-height:1}
+.exact-n{font-size:22px;font-weight:800;color:${C.blue};letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.exact-u{font-size:12px;font-weight:600;color:#4a4762;text-transform:lowercase}
+.exact-band{font-size:10.5px;font-weight:700;color:#7b7596;background:#ece6ff;border:1px solid #d8ccff;border-radius:20px;padding:2px 8px;text-transform:lowercase;letter-spacing:.3px;margin-left:4px}
+.exact-edit{appearance:none;background:transparent;border:1px solid #d8ccff;color:${C.blue};font-size:10.5px;font-weight:700;padding:5px 10px;border-radius:8px;cursor:pointer;letter-spacing:.3px}
+.exact-edit:hover{background:#ece6ff}
+.exact-restore{display:inline-block;margin-top:6px;appearance:none;background:transparent;border:none;color:${C.blue};font-size:11px;font-weight:600;cursor:pointer;padding:0}
+.exact-restore:hover{text-decoration:underline}
+.qf-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.qf-tile{position:relative;padding:16px 16px 14px;border-radius:12px;border:1px solid;display:flex;flex-direction:column;gap:2px}
+.qf-tile.qf-ok{background:linear-gradient(0deg,#e7f7ed,#ffffff);border-color:#bbe7c9}
+.qf-tile.qf-no{background:linear-gradient(0deg,#fff1ec,#ffffff);border-color:#f3c3aa}
+.qf-tile .qf-ic{font-size:20px;line-height:1;margin-bottom:4px}
+.qf-tile .qf-num{font-size:30px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.qf-tile.qf-ok .qf-num{color:#15803d}
+.qf-tile.qf-no .qf-num{color:#c0392b}
+.qf-tile .qf-lbl{font-size:12px;font-weight:700;color:#2c2740;letter-spacing:.01em;text-transform:uppercase}
+.qf-tile .qf-sub{font-size:11px;color:#6b6580;margin-top:4px}
+.qf-bar{display:flex;height:10px;border-radius:6px;overflow:hidden;background:#f0ede8;border:1px solid #ebe5dc}
+.qf-bar-fill{height:100%}
+.qf-bar-fill.ok{background:#22a06b}
+.qf-bar-fill.no{background:#e26a4a}
 .impbar-legend{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px;color:${C.sub};margin-top:9px}
 .lg-pill{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border-radius:20px;padding:2px 8px}
 .lg-pill.green{color:#15803d;background:#e7f7ed;border:1px solid #bbe7c9}
@@ -668,6 +712,8 @@ function StarApp({ user, onLogout }) {
   const [importSummary, setImportSummary] = useState(null);
   const [impOpen, setImpOpen] = useState(true);
   const [provenance, setProvenance] = useState({});
+  const [extracted, setExtracted] = useState({});   // exact numbers from imports, keyed by EXTRACT_MAP keys
+  const [editingExact, setEditingExact] = useState({});  // form-field-key → true if user overrode the extracted value
   const [sources, setSources] = useState([]);
   const [sourceFiles, setSourceFiles] = useState({});
   const [parsingLabel, setParsingLabel] = useState("");
@@ -693,7 +739,7 @@ function StarApp({ user, onLogout }) {
   };
   const deleteProject = (id) => { if (typeof confirm !== "undefined" && !confirm("Delete this project and all its assessments?")) return; persist(projects.filter((p) => p.id !== id)); if (activeProjectId === id) { setActiveProjectId(null); setView("projects"); } };
 
-  const _clearSources = () => { setSources([]); setSourceFiles({}); setSourceData({}); setImportError(null); };
+  const _clearSources = () => { setSources([]); setSourceFiles({}); setSourceData({}); setImportError(null); setExtracted({}); setEditingExact({}); };
   const newAssessment = () => { setForm(DEFAULTS); setStep(0); setMaxStep(0); setResult(null); setShowResult(false); setShowReport(false); setActiveAssessmentId(null); setImportSummary(null); setProvenance({}); _clearSources(); setInsightsBundle(null); setShowInsights(false); setChooser(true); setParsing(false); setView("assessment"); };
   const chooseManual = () => { setForm(DEFAULTS); setImportSummary(null); setProvenance({}); _clearSources(); setChooser(false); setStep(0); setMaxStep(0); };
 
@@ -701,6 +747,8 @@ function StarApp({ user, onLogout }) {
     const fused = fuseSources(kinds, data);
     setForm({ ...DEFAULTS, ...fused.form });
     setProvenance(fused.prov);
+    setExtracted(fused.exact);
+    setEditingExact({});
     const facts = [];
     kinds.forEach((k) => { const d = data[k]; if (d && d.summary) d.summary.facts.forEach((x) => facts.push([SOURCES[k].code, x])); });
     const advisories = kinds.map((k) => { const d = data[k]; return d && d.summary && d.summary.advisory; }).filter(Boolean);
@@ -735,18 +783,18 @@ function StarApp({ user, onLogout }) {
     const data = { ...sourceData }; delete data[kind];
     setSources(kinds); setSourceFiles(files); setSourceData(data);
     if (kinds.length) recompute(kinds, files, data);
-    else { setForm(DEFAULTS); setProvenance({}); setImportSummary(null); }
+    else { setForm(DEFAULTS); setProvenance({}); setImportSummary(null); setExtracted({}); setEditingExact({}); }
   };
   const proceedReview = () => { setChooser(false); setStep(0); setMaxStep(SECTIONS.length - 1); setImpOpen(true); };
-  const editAssessment = (a) => { setForm(a.form); setStep(0); setMaxStep(SECTIONS.length - 1); setResult(null); setShowResult(false); setShowReport(false); setActiveAssessmentId(a.id); setChooser(false); setImportSummary(null); setProvenance({}); _clearSources(); setInsightsBundle(a.insightsBundle || null); setShowInsights(false); setView("assessment"); };
-  const viewAssessment = (a) => { setForm(a.form); setResult(a.result); setActiveAssessmentId(a.id); setShowResult(true); setShowReport(false); setChooser(false); setImportSummary(null); setProvenance({}); _clearSources(); setInsightsBundle(a.insightsBundle || null); setShowInsights(false); setView("assessment"); };
+  const editAssessment = (a) => { setForm(a.form); setStep(0); setMaxStep(SECTIONS.length - 1); setResult(null); setShowResult(false); setShowReport(false); setActiveAssessmentId(a.id); setChooser(false); setImportSummary(null); setProvenance({}); _clearSources(); setExtracted(a.extracted || {}); setEditingExact({}); setInsightsBundle(a.insightsBundle || null); setShowInsights(false); setView("assessment"); };
+  const viewAssessment = (a) => { setForm(a.form); setResult(a.result); setActiveAssessmentId(a.id); setShowResult(true); setShowReport(false); setChooser(false); setImportSummary(null); setProvenance({}); _clearSources(); setExtracted(a.extracted || {}); setEditingExact({}); setInsightsBundle(a.insightsBundle || null); setShowInsights(false); setView("assessment"); };
   const deleteAssessment = (aid) => { if (typeof confirm !== "undefined" && !confirm("Delete this assessment?")) return; persist(projects.map((p) => (p.id === activeProjectId ? { ...p, assessments: p.assessments.filter((a) => a.id !== aid) } : p))); };
 
   const toggleMod = (m) => setForm((f) => ({ ...f, modules_implemented: f.modules_implemented.includes(m) ? f.modules_implemented.filter((x) => x !== m) : [...f.modules_implemented, m] }));
   const addCustomMod = () => { const v = customMod.trim(); if (v && !form.modules_implemented.includes(v)) set("modules_implemented", [...form.modules_implemented, v]); setCustomMod(""); };
 
   const visibleFields = (sec) => sec.fields.filter((f) => !f.showIf || f.showIf(form));
-  const fieldFilled = (f) => { if (f.type === "modules") return form.modules_implemented.length > 0; if (f.type === "text") return String(form[f.k] ?? "").trim() !== ""; if (f.type === "range") return true; return form[f.k] != null && form[f.k] !== ""; };
+  const fieldFilled = (f) => { if (f.type === "section") return true; if (f.type === "modules") return form.modules_implemented.length > 0; if (f.type === "text") return String(form[f.k] ?? "").trim() !== ""; if (f.type === "range") return true; return form[f.k] != null && form[f.k] !== ""; };
   const sectionValid = (sec) => visibleFields(sec).every(fieldFilled);
 
   const cur = SECTIONS[step];
@@ -767,8 +815,8 @@ function StarApp({ user, onLogout }) {
     const now = Date.now(); let aid = activeAssessmentId;
     const next = projects.map((p) => {
       if (p.id !== activeProjectId) return p;
-      if (aid) return { ...p, assessments: p.assessments.map((a) => (a.id === aid ? { ...a, form, result: res, insightsBundle: bundle, updatedAt: now } : a)) };
-      aid = uid(); return { ...p, assessments: [...p.assessments, { id: aid, form, result: res, insightsBundle: bundle, createdAt: now, updatedAt: now }] };
+      if (aid) return { ...p, assessments: p.assessments.map((a) => (a.id === aid ? { ...a, form, result: res, insightsBundle: bundle, extracted, updatedAt: now } : a)) };
+      aid = uid(); return { ...p, assessments: [...p.assessments, { id: aid, form, result: res, insightsBundle: bundle, extracted, createdAt: now, updatedAt: now }] };
     });
     persist(next); setActiveAssessmentId(aid); setResult(res); setInsightsBundle(bundle); setShowInsights(false); setShowResult(true);
   };
@@ -777,18 +825,53 @@ function StarApp({ user, onLogout }) {
   const jumpTo = (i) => { if (i <= maxStep) setStep(i); };
 
   const renderField = (f) => {
+    if (f.type === "section") return (
+      <div className="fld full sec-divider" key={f.k}><span>{f.label}</span></div>
+    );
     const filled = fieldFilled(f);
     return (
       <div className={"fld" + (f.type === "range" || f.type === "modules" ? " full" : "") + ((provenance[f.k] && !provenance[f.k].assumed) ? " from-report" : (Object.keys(provenance).length > 0 && TECH_KEYS.includes(f.k) && (!provenance[f.k] || provenance[f.k].assumed)) ? " needs-confirm" : "")} key={f.k}>
         <label>{f.label}{provenance[f.k] && !provenance[f.k].assumed && <span className="src-badge">✓ {provenance[f.k].code}</span>}{Object.keys(provenance).length > 0 && TECH_KEYS.includes(f.k) && (!provenance[f.k] || provenance[f.k].assumed) && <span className="confirm-badge">confirm</span>}{SWING.has(f.k) && <span className="swing">KEY DRIVER</span>}</label>
         {f.type === "text" && <input className={"ctl" + (filled ? "" : " miss")} placeholder={f.ph || ""} value={form[f.k]} onChange={(e) => set(f.k, e.target.value)} />}
-        {f.type === "select" && (<select className="ctl" value={form[f.k]} onChange={(e) => set(f.k, e.target.value)}>{f.opts.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}</select>)}
+        {f.type === "select" && (() => {
+          const ext = EXTRACT_MAP[f.k];
+          const exactVal = ext ? extracted[ext.key] : null;
+          if (exactVal != null && !editingExact[f.k]) {
+            const bandLabel = (f.opts.find((o) => o.v === form[f.k]) || {}).l || "";
+            return (
+              <div className="exact-wrap">
+                <div className="exact-val">
+                  <span className="exact-ic">{ext.icon}</span>
+                  <span className="exact-n">{Number(exactVal).toLocaleString()}</span>
+                  <span className="exact-u">{ext.unit}</span>
+                  {bandLabel && <span className="exact-band">band: {bandLabel}</span>}
+                </div>
+                <button type="button" className="exact-edit" onClick={() => setEditingExact((e) => ({ ...e, [f.k]: true }))}>✏ override</button>
+              </div>
+            );
+          }
+          return (
+            <div>
+              <select className="ctl" value={form[f.k]} onChange={(e) => set(f.k, e.target.value)}>{f.opts.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}</select>
+              {ext && exactVal != null && editingExact[f.k] && (
+                <button type="button" className="exact-restore" onClick={() => setEditingExact((e) => { const c = { ...e }; delete c[f.k]; return c; })}>↶ use extracted: {Number(exactVal).toLocaleString()} {ext.unit}</button>
+              )}
+            </div>
+          );
+        })()}
         {f.type === "range" && (<div className="range-row"><input type="range" min="0" max="100" value={form[f.k]} onChange={(e) => set(f.k, e.target.value)} /><span className="range-val">{form[f.k]}%</span></div>)}
         {f.type === "modules" && (
           <div>
             <div className="chips">
-              {PRESET_MODULES.map((m) => <span key={m} className={"chip" + (form.modules_implemented.includes(m) ? " on" : "")} onClick={() => toggleMod(m)}>SAP {m}</span>)}
-              {form.modules_implemented.filter((m) => !PRESET_MODULES.includes(m)).map((m) => <span key={m} className="chip on" onClick={() => toggleMod(m)}>{m}<span className="x">×</span></span>)}
+              {PRESET_MODULES.map((m) => {
+                const active = form.modules_implemented.includes(m);
+                const fromImport = active && provenance["modules_implemented"] && !provenance["modules_implemented"].assumed;
+                return <span key={m} className={"chip" + (active ? " on" : "") + (fromImport ? " imported" : "")} onClick={() => toggleMod(m)}>SAP {m}</span>;
+              })}
+              {form.modules_implemented.filter((m) => !PRESET_MODULES.includes(m)).map((m) => {
+                const fromImport = provenance["modules_implemented"] && !provenance["modules_implemented"].assumed;
+                return <span key={m} className={"chip on" + (fromImport ? " imported" : "")} onClick={() => toggleMod(m)}>{m}<span className="x">×</span></span>;
+              })}
             </div>
             <div className="addrow">
               <input className="ctl" placeholder="Add another module (e.g. SAP TRM, IS-Auto)…" value={customMod} onChange={(e) => setCustomMod(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addCustomMod(); }} />
@@ -810,7 +893,7 @@ function StarApp({ user, onLogout }) {
       <div className="star-shell">
         <div className="star-logo" onClick={() => setView("projects")} style={{ cursor: "pointer" }}>★</div>
         <div>
-          <h1>STAR — SAP Transformation Accelerator Roadmap</h1>
+          <h1>STAR — SAP Transformation Accelerator Roadmap <span style={{ fontSize: "0.55em", fontWeight: 500, color: "#7c5cff", marginLeft: 8 }}>build v2.1 · RC+Fiori</span></h1>
           <div className="crumb">{view === "projects" ? "Portfolio" : activeProject ? activeProject.name : "Assessment"}</div>
         </div>
         <div className="user-area">
@@ -923,7 +1006,7 @@ function StarApp({ user, onLogout }) {
           <div className="home-title">How do you want to start?</div>
           <div className="home-sub">Upload one or more SAP analysis exports to auto-fill the technical inputs — or enter everything by hand. You'll review every value (tagged with its source) before scoring.</div>
           <div className="choose-grid src-grid">
-            {[["readiness", "Readiness Check", "System, sizing, interfaces, add-ons"], ["atc", "ATC / Custom Code", "Custom-object counts, findings & effort"], ["simplification", "Simplification Item Check", "Mandatory functional conversions & effort"], ["ewa", "EarlyWatch Alert", "DB size & growth, performance, top tables"]].map(([k, h, d]) => (
+            {[["readiness", "Readiness Check (recommended)", "Upload the full RC .zip — system, sizing, interfaces, custom code, Fiori, add-ons"], ["atc", "ATC / Custom Code", "CustomCode.xlsx alone — custom-object counts, findings & effort"], ["simplification", "Simplification Item Check", "Mandatory functional conversions & effort"], ["ewa", "EarlyWatch Alert", "DB size & growth, performance, top tables"]].map(([k, h, d]) => (
               <label className={"choose-card src-tile" + (sources.includes(k) ? " loaded" : "")} key={k}>
                 <input type="file" accept={SOURCES[k].accept} style={{ display: "none" }} onChange={(e) => onSourceFile(k, e)} />
                 <div className="src-tile-top"><span className="src-code">{SOURCES[k].code}</span>{sources.includes(k) && <span className="src-tick">✓</span>}</div>
@@ -1139,7 +1222,89 @@ function StarApp({ user, onLogout }) {
             return (
               <div key={di}>
                 <div className="src-section"><span className="src-code big">{d.code}</span><span className="src-section-h">{d.label}</span><span className="src-section-f">{d.file}</span></div>
-                {ins.kind === "readiness" && (() => {
+                {!ins && <div className="rk-note" style={{ padding: "12px 0" }}>No detailed insights extracted for this source — facts are shown in the import summary.</div>}
+                {ins && ins.kind === "readiness_docx" && (
+                  <div className="card" style={{ marginBottom: 16 }}>
+                    <div className="card-h"><span className="dot" />Extracted from narrative report</div>
+                    <div className="card-b">
+                      {(ins.facts || []).map((f, i) => <div key={i} style={{ fontSize: 13, padding: "5px 0", borderBottom: "1px solid #f0ede8" }}>{f}</div>)}
+                    </div>
+                  </div>
+                )}
+                {ins && ins.kind === "readiness_zip" && (() => {
+                  const ifaces = ins.interfaces || [];
+                  const ifMax  = Math.max(...ifaces.map((x) => x[1]), 1);
+                  const fiori  = ins.fioriByArea || [];
+                  const fMax   = Math.max(...fiori.map((x) => x[1]), 1);
+                  return (
+                    <div>
+                      {ifaces.length > 0 && (
+                        <div className="card" style={{ marginBottom: 16 }}>
+                          <div className="card-h"><span className="dot" />Interfaces — {ins.interfaceTotal?.toLocaleString()} total</div>
+                          <div className="card-b">
+                            {ifaces.map((x, i) => (
+                              <div className="rk-bar-row" key={i}>
+                                <span className="rk-bar-label">{x[0]}</span>
+                                <div className="rk-bar-track"><div className="rk-bar-fill" style={{ width: (x[1] / ifMax) * 100 + "%" }} /></div>
+                                <span className="rk-bar-val">{x[1].toLocaleString()}</span>
+                              </div>
+                            ))}
+                            {ins.addonsIncompat > 0 && <div className="rk-note" style={{ color: "#c0392b", marginTop: 8 }}>{ins.addonsIncompat} incompatible add-on(s) — conversion blocker</div>}
+                          </div>
+                        </div>
+                      )}
+                      {ins.customCode && ins.customCode.quickFix && (ins.customCode.quickFix.objectsAvailable > 0 || ins.customCode.quickFix.topicsNotAvail > 0) && (() => {
+                        const qf = ins.customCode.quickFix;
+                        const total = qf.objectsAvailable + qf.objectsManual || 1;
+                        const availPct = Math.round((qf.objectsAvailable / total) * 100);
+                        return (
+                          <div className="card" style={{ marginBottom: 16 }}>
+                            <div className="card-h"><span className="dot" />Quick Fix Coverage — {qf.coveragePct}% of in-scope objects auto-fixable</div>
+                            <div className="card-b">
+                              <div className="qf-grid">
+                                <div className="qf-tile qf-ok">
+                                  <div className="qf-ic">⚡</div>
+                                  <div className="qf-num">{qf.objectsAvailable.toLocaleString()}</div>
+                                  <div className="qf-lbl">objects · Quick Fix Available</div>
+                                  <div className="qf-sub">{qf.topicsAvailable} topic(s) supported</div>
+                                </div>
+                                <div className="qf-tile qf-no">
+                                  <div className="qf-ic">🛠</div>
+                                  <div className="qf-num">{qf.objectsManual.toLocaleString()}</div>
+                                  <div className="qf-lbl">objects · Manual remediation</div>
+                                  <div className="qf-sub">{qf.topicsNotAvail} topic(s) without Quick Fix</div>
+                                </div>
+                              </div>
+                              <div className="qf-bar">
+                                <div className="qf-bar-fill ok" style={{ width: availPct + "%" }} />
+                                <div className="qf-bar-fill no" style={{ width: (100 - availPct) + "%" }} />
+                              </div>
+                              <div className="rk-note" style={{ marginTop: 10 }}>
+                                Remediation estimate ≈ {ins.customCode.totals.effort} · {ins.customCode.totals.errors.toLocaleString()} errors + {ins.customCode.totals.warnings.toLocaleString()} warnings across {ins.customCode.totals.topics} topics
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                      {fiori.length > 0 && (
+                        <div className="card" style={{ marginBottom: 16 }}>
+                          <div className="card-h"><span className="dot" />Fiori — {ins.fioriTotal?.toLocaleString()} recommended apps by functional area</div>
+                          <div className="card-b">
+                            {fiori.map((x, i) => (
+                              <div className="rk-bar-row" key={i}>
+                                <span className="rk-bar-label">{x[0]}</span>
+                                <div className="rk-bar-track"><div className="rk-bar-fill vio" style={{ width: (x[1] / fMax) * 100 + "%" }} /></div>
+                                <span className="rk-bar-val">{x[1]}</span>
+                              </div>
+                            ))}
+                            {ins.siCount > 0 && <div className="rk-note" style={{ marginTop: 8 }}>{ins.siCount} relevant Simplification Items in this export</div>}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+                {ins && ins.kind === "readiness" && (() => {
                   const ifMax = Math.max(...ins.interfaces.map((x) => x[1]), 1);
                   const ccMax = Math.max(...ins.customCode.top.map((x) => x[1]), 1);
                   const pill = (st) => (st === "Incompatible" ? "red" : st === "Compatible" ? "green" : "amber");
@@ -1154,27 +1319,166 @@ function StarApp({ user, onLogout }) {
                     </div>
                   );
                 })()}
-                {ins.kind === "atc" && (() => {
-                  const m = Math.max(...ins.byCategory.map((x) => x[1]), 1);
+                {ins && ins.kind === "atc" && (() => {
+                  const isRcCc = ins.format === "rc_cc";
+                  const cats   = ins.byCategory  || [];
+                  const byComp = ins.byComponent  || [];
+                  const catMax  = Math.max(...cats.map((x) => x[1]),  1);
+                  const compMax = Math.max(...byComp.map((x) => x[1]), 1);
                   return (
-                    <div className="card" style={{ marginBottom: 16 }}><div className="card-h"><span className="dot" />Custom-code findings</div><div className="card-b">
-                      <div className="rk-stats"><div className="rk-stat"><div className="v">{ins.totals.objects.toLocaleString()}</div><div className="k">Objects</div></div><div className="rk-stat"><div className="v">{ins.totals.inScope.toLocaleString()}</div><div className="k">In scope</div></div><div className="rk-stat"><div className="v">{ins.totals.errors.toLocaleString()}</div><div className="k">Errors</div></div><div className="rk-stat"><div className="v">{ins.totals.usedPct}%</div><div className="k">Used</div></div></div>
-                      <div style={{ marginTop: 14 }}>{ins.byCategory.map((x, i) => (<div className="rk-bar-row" key={i}><span className="rk-bar-label">{x[0]}</span><div className="rk-bar-track"><div className="rk-bar-fill alt" style={{ width: (x[1] / m) * 100 + "%" }} /></div><span className="rk-bar-val">{x[1]}</span></div>))}</div>
-                      <div className="rk-note">Estimated remediation ≈ {ins.totals.effort}.</div>
-                    </div></div>
-                  );
-                })()}
-                {ins.kind === "simplification" && (() => {
-                  const m = Math.max(...ins.effort.map((x) => x[1]), 1);
-                  const pill = (st) => (st === "Mandatory" ? "red" : "amber");
-                  return (
-                    <div className="res-grid">
-                      <div className="card" style={{ marginBottom: 16 }}><div className="card-h"><span className="dot" />Effort · {ins.total} items</div><div className="card-b">{ins.effort.map((x, i) => (<div className="rk-bar-row" key={i}><span className="rk-bar-label">{x[0]}</span><div className="rk-bar-track"><div className="rk-bar-fill vio" style={{ width: (x[1] / m) * 100 + "%" }} /></div><span className="rk-bar-val">{x[1]}</span></div>))}<div className="rk-note">{ins.errors} consistency errors to fix pre-conversion.</div></div></div>
-                      <div className="card" style={{ marginBottom: 16 }}><div className="card-h"><span className="dot" />Key mandatory items</div><div className="card-b">{ins.mandatory.map((x, i) => (<div className="addon-row" key={i}><span>{x[0]}</span><span className={"addon-pill " + pill(x[1])}>{x[1]}</span></div>))}</div></div>
+                    <div>
+                      <div className="card" style={{ marginBottom: 16 }}>
+                        <div className="card-h"><span className="dot" />{isRcCc ? "RC Custom Code — topic summary" : "Custom-code findings"}</div>
+                        <div className="card-b">
+                          <div className="rk-stats">
+                            {isRcCc && <div className="rk-stat"><div className="v">{ins.totals.topics}</div><div className="k">Topics</div></div>}
+                            <div className="rk-stat"><div className="v">{ins.totals.objects.toLocaleString()}</div><div className="k">Objects</div></div>
+                            <div className="rk-stat"><div className="v">{ins.totals.inScope.toLocaleString()}</div><div className="k">In scope</div></div>
+                            <div className="rk-stat"><div className="v">{ins.totals.errors.toLocaleString()}</div><div className="k">Errors</div></div>
+                            {isRcCc
+                              ? <div className="rk-stat"><div className="v">{ins.totals.unresolved.toLocaleString()}</div><div className="k">Unresolved</div></div>
+                              : <div className="rk-stat"><div className="v">{ins.totals.usedPct != null ? ins.totals.usedPct + "%" : "—"}</div><div className="k">Used</div></div>}
+                          </div>
+                          {isRcCc && ins.totals.functionalRedesign > 0 && (
+                            <div className="rk-note" style={{ color: "#c0392b", marginTop: 10 }}>
+                              {ins.totals.functionalRedesign} topic(s) require Functional Redesign · {ins.totals.unavailable} Functionality Unavailable
+                            </div>
+                          )}
+                          <div className="rk-note" style={{ marginTop: 8 }}>Estimated remediation ≈ {ins.totals.effort}</div>
+                        </div>
+                      </div>
+                      {isRcCc && ins.quickFix && (ins.quickFix.objectsAvailable > 0 || ins.quickFix.topicsNotAvail > 0) && (() => {
+                        const qf = ins.quickFix;
+                        const total = qf.objectsAvailable + qf.objectsManual || 1;
+                        const availPct = Math.round((qf.objectsAvailable / total) * 100);
+                        return (
+                          <div className="card" style={{ marginBottom: 16 }}>
+                            <div className="card-h"><span className="dot" />Quick Fix Coverage — {qf.coveragePct}% of in-scope objects auto-fixable</div>
+                            <div className="card-b">
+                              <div className="qf-grid">
+                                <div className="qf-tile qf-ok">
+                                  <div className="qf-ic">⚡</div>
+                                  <div className="qf-num">{qf.objectsAvailable.toLocaleString()}</div>
+                                  <div className="qf-lbl">objects · Quick Fix Available</div>
+                                  <div className="qf-sub">{qf.topicsAvailable} topic(s) supported</div>
+                                </div>
+                                <div className="qf-tile qf-no">
+                                  <div className="qf-ic">🛠</div>
+                                  <div className="qf-num">{qf.objectsManual.toLocaleString()}</div>
+                                  <div className="qf-lbl">objects · Manual remediation</div>
+                                  <div className="qf-sub">{qf.topicsNotAvail} topic(s) without Quick Fix</div>
+                                </div>
+                              </div>
+                              <div className="qf-bar">
+                                <div className="qf-bar-fill ok" style={{ width: availPct + "%" }} title={"Quick Fix · " + availPct + "%"} />
+                                <div className="qf-bar-fill no" style={{ width: (100 - availPct) + "%" }} title={"Manual · " + (100 - availPct) + "%"} />
+                              </div>
+                              <div className="rk-note" style={{ marginTop: 10 }}>
+                                High Quick Fix coverage materially cuts remediation effort — current model assumes up to 70% saving on the auto-fixable share.
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                      {cats.length > 0 && (
+                        <div className="card" style={{ marginBottom: 16 }}>
+                          <div className="card-h"><span className="dot" />{isRcCc ? "By Remediation Type" : "By Check Category"}</div>
+                          <div className="card-b">
+                            {cats.map((x, i) => (
+                              <div className="rk-bar-row" key={i}>
+                                <span className="rk-bar-label">{x[0]}</span>
+                                <div className="rk-bar-track"><div className="rk-bar-fill alt" style={{ width: (x[1] / catMax) * 100 + "%" }} /></div>
+                                <span className="rk-bar-val">{x[1]}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {byComp.length > 0 && (
+                        <div className="card" style={{ marginBottom: 16 }}>
+                          <div className="card-h"><span className="dot" />By Application Component</div>
+                          <div className="card-b">
+                            {byComp.map((x, i) => (
+                              <div className="rk-bar-row" key={i}>
+                                <span className="rk-bar-label">{x[0]}</span>
+                                <div className="rk-bar-track"><div className="rk-bar-fill vio" style={{ width: (x[1] / compMax) * 100 + "%" }} /></div>
+                                <span className="rk-bar-val">{x[1]}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })()}
-                {ins.kind === "ewa" && (() => {
+                {ins && ins.kind === "simplification" && (() => {
+                  // Support both new shape (lob_breakdown/items) and legacy (effort/mandatory)
+                  const isNew = Array.isArray(ins.lob_breakdown);
+                  const priorityRows = isNew
+                    ? [["High – Unavailable", ins.high], ["Medium – Change/Deprecated", ins.medium], ["Check", ins.low]]
+                    : (ins.effort || []);
+                  const prMax = Math.max(...priorityRows.map((x) => x[1]), 1);
+                  const lobRows = isNew ? (ins.lob_breakdown || []) : [];
+                  const lobMax = Math.max(...lobRows.map((x) => x[1]), 1);
+                  const pill = (p) => p === "High" ? "red" : p === "Medium" ? "amber" : "green";
+                  const items = isNew ? (ins.items || []) : (ins.mandatory || []).map(([t, l]) => ({ title: t, priority: l }));
+                  return (
+                    <div>
+                      <div className="res-grid" style={{ marginBottom: 0 }}>
+                        <div className="card" style={{ marginBottom: 16 }}>
+                          <div className="card-h"><span className="dot" />Priority · {ins.total} items</div>
+                          <div className="card-b">
+                            {priorityRows.map((x, i) => (
+                              <div className="rk-bar-row" key={i}>
+                                <span className="rk-bar-label">{x[0]}</span>
+                                <div className="rk-bar-track"><div className="rk-bar-fill vio" style={{ width: (x[1] / prMax) * 100 + "%" }} /></div>
+                                <span className="rk-bar-val">{x[1]}</span>
+                              </div>
+                            ))}
+                            {ins.errors > 0 && <div className="rk-note" style={{ color: "#c0392b" }}>{ins.errors} consistency error(s) — fix before conversion freeze.</div>}
+                          </div>
+                        </div>
+                        {lobRows.length > 0 && (
+                          <div className="card" style={{ marginBottom: 16 }}>
+                            <div className="card-h"><span className="dot" />By Line of Business</div>
+                            <div className="card-b">
+                              {lobRows.map((x, i) => (
+                                <div className="rk-bar-row" key={i}>
+                                  <span className="rk-bar-label">{x[0]}</span>
+                                  <div className="rk-bar-track"><div className="rk-bar-fill alt" style={{ width: (x[1] / lobMax) * 100 + "%" }} /></div>
+                                  <span className="rk-bar-val">{x[1]}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <div className="card" style={{ marginBottom: 16 }}>
+                        <div className="card-h"><span className="dot" />Simplification Items</div>
+                        <div className="card-b">
+                          {items.map((x, i) => (
+                            <div key={i} style={{ borderBottom: "1px solid #eee", paddingBottom: 10, marginBottom: 10 }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                                <span style={{ fontWeight: 600, fontSize: 13 }}>{x.title}</span>
+                                <span className={"addon-pill " + pill(x.priority)} style={{ whiteSpace: "nowrap" }}>{x.priority}</span>
+                              </div>
+                              {isNew && (
+                                <div style={{ fontSize: 11, color: "#888", marginTop: 3 }}>
+                                  {x.lob && <span style={{ marginRight: 8 }}>{x.lob}</span>}
+                                  {x.id && <span style={{ fontFamily: "monospace" }}>{x.id}</span>}
+                                </div>
+                              )}
+                              {isNew && x.summary && (
+                                <div style={{ fontSize: 12, color: "#555", marginTop: 4, fontStyle: "italic" }}>{x.summary}</div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+                {ins && ins.kind === "ewa" && (() => {
                   const m = Math.max(...ins.topTables.map((x) => x[1]), 1);
                   return (
                     <div className="res-grid">
