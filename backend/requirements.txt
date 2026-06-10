@@ -1,0 +1,16 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+sqlmodel==0.0.22
+pydantic[email]==2.10.4
+pydantic-settings==2.7.1
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+python-jose[cryptography]==3.3.0
+python-multipart==0.0.20
+openpyxl==3.1.5
+python-dotenv==1.0.1
+# LLM narrative providers — install whichever you use (all are optional)
+anthropic>=0.40.0          # pip install anthropic
+generative-ai-hub-sdk      # SAP AI Core (Gen AI Hub) — primary narrative provider
+# openai>=1.30.0           # pip install openai
+# groq>=0.9.0              # pip install groq

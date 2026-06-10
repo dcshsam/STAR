@@ -1,0 +1,16 @@
+{
+  "name": "star-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "STAR — SAP Transformation Accelerator Roadmap (Next.js frontend)",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start -p $PORT"
+  },
+  "dependencies": {
+    "next": "14.2.5",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  }
+}

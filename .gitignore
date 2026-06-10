@@ -1,0 +1,19 @@
+# node / next
+node_modules/
+.next/
+out/
+# env & secrets — never commit
+.env
+.env.local
+*.env
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+# local db & os
+*.db
+.DS_Store
+# logs
+*.log
+

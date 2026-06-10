@@ -1,0 +1,14 @@
+applications:
+  - name: star-web
+    memory: 512M
+    disk_quota: 2048M
+    instances: 1
+    buildpacks:
+      - nodejs_buildpack
+    command: npm start
+    routes:
+      - route: star-web.cfapps.us10-001.hana.ondemand.com
+    env:
+      NODE_ENV: production
+      # Baked into the Next.js build at staging time — must match the backend route above
+      NEXT_PUBLIC_API_URL: https://star-backend.cfapps.us10-001.hana.ondemand.com

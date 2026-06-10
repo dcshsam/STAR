@@ -1,0 +1,36 @@
+applications:
+  - name: star-backend
+    memory: 512M
+    disk_quota: 1024M
+    instances: 1
+    buildpacks:
+      - python_buildpack
+    command: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    routes:
+      - route: star-backend.cfapps.us10-001.hana.ondemand.com
+    env:
+      ENV: production
+      DATABASE_URL: sqlite:///./star.db
+      ACCESS_TOKEN_EXPIRE_MINUTES: "60"
+      # CORS: List[str] field — pydantic-settings parses it as JSON, so it MUST be a
+      # JSON array string, not a bare URL. Accept requests from the frontend CF app.
+      CORS_ORIGINS: '["https://star-web.cfapps.us10-001.hana.ondemand.com"]'
+      FIRST_ADMIN_USERNAME: admin
+      FIRST_ADMIN_EMAIL: admin@yourorg.com
+      # LLM narrative: SAP AI Core (Gen AI Hub) primary + Anthropic fallback.
+      # Non-secret enablement lives here; credentials are injected via cf set-env.
+      USE_LLM_NARRATIVE: "true"
+      LLM_PROVIDER: sap_ai_core
+      LLM_MODEL: gpt-4o
+      LLM_FALLBACK_PROVIDER: anthropic
+      LLM_FALLBACK_MODEL: claude-sonnet-4-6
+      # ── Secrets: set with cf set-env AFTER push, then cf restage ──────────────
+      # cf set-env star-backend SECRET_KEY        <openssl rand -hex 32>
+      # cf set-env star-backend FIRST_ADMIN_PASSWORD  <strong-password>
+      # cf set-env star-backend ANTHROPIC_API_KEY <sk-ant-...>
+      # Optional SAP AI Core (if USE_LLM_NARRATIVE=true + LLM_PROVIDER=sap_ai_core):
+      # cf set-env star-backend AICORE_BASE_URL        <url>
+      # cf set-env star-backend AICORE_CLIENT_ID       <id>
+      # cf set-env star-backend AICORE_CLIENT_SECRET   <secret>
+      # cf set-env star-backend AICORE_AUTH_URL        <url>
+      # cf set-env star-backend SAP_AI_CORE_DEPLOYMENT_ID <id>
