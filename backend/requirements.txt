@@ -8,6 +8,9 @@ bcrypt==4.0.1
 python-jose[cryptography]==3.3.0
 python-multipart==0.0.20
 openpyxl==3.1.5
+python-docx==1.1.2          # Readiness Check narrative .docx parser
+pypdf==5.1.0                # EarlyWatch Alert PDF text extraction (pure Python)
+py7zr==1.1.0                # 7z archive support (password-protected RC exports)
 python-dotenv==1.0.1
 # LLM narrative providers — install whichever you use (all are optional)
 anthropic>=0.40.0          # pip install anthropic

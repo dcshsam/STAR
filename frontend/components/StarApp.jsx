@@ -255,6 +255,12 @@ const EXTRACT_MAP = {
   db_size_band:            { key: "db_size_gb",         unit: "GB on disk",          icon: "💾" },
 };
 
+// Fields whose values from multiple sources should be unioned (deduped) rather
+// than overwritten — only `modules_implemented` today, since each report shows a
+// partial view of the system's footprint and a later source must not erase
+// modules the earlier source uniquely detected.
+const UNION_KEYS = new Set(["modules_implemented"]);
+
 // Fuse real backend-parsed data (keyed by source kind) into a merged form + provenance + extracted exact numbers.
 function fuseSources(kinds, dataByKind) {
   const form = {}; const prov = {}; const exact = {};
@@ -263,8 +269,17 @@ function fuseSources(kinds, dataByKind) {
     const src = SOURCES[k];
     const parsed = (dataByKind && dataByKind[k]) || {};
     Object.entries(parsed.form || {}).forEach(([key, val]) => {
-      form[key] = val;
-      prov[key] = { code: src.code, label: src.label, assumed: !src.confident.includes(key) };
+      if (UNION_KEYS.has(key) && Array.isArray(val)) {
+        const prev = Array.isArray(form[key]) ? form[key] : [];
+        const merged = prev.slice();
+        val.forEach((m) => { if (!merged.includes(m)) merged.push(m); });
+        form[key] = merged;
+        // Provenance: keep the highest-priority source that contributed.
+        if (!prov[key]) prov[key] = { code: src.code, label: src.label, assumed: !src.confident.includes(key) };
+      } else {
+        form[key] = val;
+        prov[key] = { code: src.code, label: src.label, assumed: !src.confident.includes(key) };
+      }
     });
     Object.entries(parsed.extracted || {}).forEach(([key, val]) => { exact[key] = val; });
   });

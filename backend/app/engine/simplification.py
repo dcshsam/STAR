@@ -86,9 +86,17 @@ def parse_simplification(data: bytes, filename: str = "") -> dict:
     if data[:2] == b"PK":
         try:
             z = zipfile.ZipFile(io.BytesIO(data))
-            xlsx_names = [n for n in z.namelist() if n.lower().endswith((".xlsx", ".xlsm"))]
-            if xlsx_names:
-                raw = z.read(xlsx_names[0])
+            xlsx_names = [n for n in z.namelist()
+                          if n.lower().endswith((".xlsx", ".xlsm"))
+                          and not n.split("/")[-1].startswith("~$")]
+            # The SI Check zip ships Activities.xlsx, AppAvailability.xlsx and
+            # RelevantSimplificationItems.xlsx — only the last has the LoB column
+            # we score modules from. Prefer it by name; fall back to anything else.
+            preferred = [n for n in xlsx_names if "relevantsimplificationitems" in n.lower()] \
+                        or [n for n in xlsx_names if "simplification" in n.lower()] \
+                        or xlsx_names
+            if preferred:
+                raw = z.read(preferred[0])
         except zipfile.BadZipFile:
             pass
 

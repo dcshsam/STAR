@@ -21,21 +21,39 @@ from typing import Optional
 from openpyxl import load_workbook
 
 # ── Application Component prefix → STAR PRESET_MODULES ───────────────────────
+# Order matters: longer/more-specific prefixes must come before shorter ones so
+# e.g. `mm-srv` resolves to SRM before falling through to MM.
 _COMP_TO_MODULE: list[tuple[str, str]] = [
+    # Finance & Controlling — includes PSM (Funds Management), FIN-* (migration),
+    # EC-CS (Enterprise Controlling/Consolidation, which is CO), and Treasury.
     ("fi-", "FI"), ("fi/", "FI"),
+    ("fin-", "FI"),
+    ("psm-", "FI"),
     ("co-", "CO"), ("co/", "CO"),
-    ("fscm", "FSCM"),
+    ("ec-cs", "CO"), ("ec-pca", "CO"),
+    ("fscm", "FSCM"), ("fin-fscm", "FSCM"),
+    # Sourcing & Procurement
+    ("mm-srv", "SRM"), ("srm", "SRM"),
     ("mm-", "MM"), ("mm/", "MM"),
-    ("srm", "SRM"), ("mm-srv", "SRM"),
+    # Sales & Customer Service
     ("sd-", "SD"), ("sd/", "SD"),
+    ("cs-", "SD"),  # Customer Service is delivered via SD components
+    # Production & Quality
     ("pp-", "PP"), ("pp/", "PP"),
     ("qm-", "QM"),
-    ("pm-", "PM / EAM"), ("cs-", "PM / EAM"),
-    ("ps-", "PS"),
-    ("hr-", "HCM"), ("pa-", "HCM"), ("py-", "HCM"), ("pt-", "HCM"), ("hcm", "HCM"),
+    # Plant Maintenance / EAM
+    ("pm-", "PM / EAM"), ("eam-", "PM / EAM"),
+    # Project Systems (covers PPM — Project & Portfolio Management)
+    ("ps-", "PS"), ("ppm-", "PS"),
+    # Human Capital Management — PA/PT/PY/PE all live under HR
+    ("hr-", "HCM"), ("pa-", "HCM"), ("py-", "HCM"), ("pt-", "HCM"),
+    ("pe-", "HCM"), ("hcm", "HCM"),
+    # Warehouse & Logistics Execution
     ("le-wm", "WM"), ("wm-", "WM"),
     ("ewm", "EWM"),
-    ("tm-", "TM"),
+    # Transportation
+    ("tm-", "TM"), ("le-tra", "TM"),
+    # Governance, Real Estate
     ("grc", "GRC"),
     ("re-", "RE"),
 ]
